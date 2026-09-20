@@ -1,101 +1,37 @@
+//Call: Slash command birthday
+//Saves the day and month someone was born, so Mirror can wish them a happy birthday.
+//Run on its own it opens a small form to type a date into; the month and day can also be
+//picked as options for anyone who prefers that
 import {
-	ChatInputCommandInteraction,
-	CacheType,
-	EmbedBuilder,
-	ApplicationCommandDataResolvable,
-	MessageFlags,
+	ActionRowBuilder,
 	ApplicationCommandOptionType,
+	CacheType,
+	ChatInputCommandInteraction,
+	EmbedBuilder,
+	MessageFlags,
+	ModalBuilder,
+	ModalSubmitInteraction,
+	TextInputBuilder,
+	TextInputStyle,
 } from 'discord.js';
 import Enmap from 'enmap';
 import { Bot } from '../Bot';
 import { colorCheck } from '../resources/embedColorCheck';
+import {
+	longDate,
+	months,
+	monthNumber,
+	parseBirthdayInput,
+} from '../resources/birthdayDates';
 import { Option } from './Option';
 import { silencedUsers } from './SilenceMember';
 import { SlashCommand } from './SlashCommand';
 
-type monthIndex = { [index: string]: number };
-const monthCode = {
-	january: 1,
-	february: 2,
-	march: 3,
-	april: 4,
-	may: 5,
-	june: 6,
-	july: 7,
-	august: 8,
-	september: 9,
-	october: 10,
-	november: 11,
-	december: 12,
-} as monthIndex;
-
-const dayCap = {
-	january: 31,
-	february: 29,
-	march: 31,
-	april: 30,
-	may: 31,
-	june: 30,
-	july: 31,
-	august: 31,
-	september: 30,
-	october: 31,
-	november: 30,
-	december: 31,
-} as monthIndex;
-
-const months = [
-	{
-		name: 'January',
-		value: 'january',
-	},
-	{
-		name: 'February',
-		value: 'february',
-	},
-	{
-		name: 'March',
-		value: 'march',
-	},
-	{
-		name: 'April',
-		value: 'april',
-	},
-	{
-		name: 'May',
-		value: 'may',
-	},
-	{
-		name: 'June',
-		value: 'june',
-	},
-	{
-		name: 'July',
-		value: 'july',
-	},
-	{
-		name: 'August',
-		value: 'august',
-	},
-	{
-		name: 'September',
-		value: 'september',
-	},
-	{
-		name: 'October',
-		value: 'october',
-	},
-	{
-		name: 'November',
-		value: 'november',
-	},
-	{
-		name: 'December',
-		value: 'december',
-	},
-];
-
 export let bdayDates = new Enmap({ name: 'bdayDates' });
+
+//the form that opens when someone runs /birthday without picking a date
+export const birthdayModal = 'birthday:set';
+const dateField = 'date';
 
 export class Birthday implements SlashCommand {
 	name: string = 'birthday';
@@ -106,18 +42,21 @@ export class Birthday implements SlashCommand {
 			'month',
 			'Your Birth Month',
 			ApplicationCommandOptionType.String,
-			true,
+			false,
 			'may',
-			months
+			months.map((month) => ({ name: month, value: month.toLowerCase() }))
 		),
 		new Option(
 			'day',
 			'The date of your birthday',
 			ApplicationCommandOptionType.Integer,
-			true
+			false
 		),
 	];
 	requiredPermissions: bigint[] = [];
+	//birthdays are saved for everywhere at once, but the command reads the server's silenced
+	//members and color, so it belongs in a server rather than a direct message
+	guildRequired?: boolean | undefined = true;
 	async run(
 		bot: Bot,
 		interaction: ChatInputCommandInteraction<CacheType>
@@ -131,38 +70,45 @@ export class Birthday implements SlashCommand {
 				});
 			}
 
-			if (
-				interaction.options.getInteger('day')! >
-					dayCap[interaction.options.getString('month')!] ||
-				interaction.options.getInteger('day')! < 1
-			) {
-				return void interaction.reply({
-					content: 'Please enter a valid date',
-					flags: MessageFlags.Ephemeral,
-				});
+			const month = interaction.options.getString('month');
+			const day = interaction.options.getInteger('day');
+
+			//both options given: save it straight away, the way this command always worked
+			if (month && day !== null) {
+				const parsed = parseBirthdayInput(`${month} ${day}`);
+				if ('problem' in parsed) {
+					return void interaction.reply({
+						content: parsed.problem,
+						flags: MessageFlags.Ephemeral,
+					});
+				}
+				return void (await save(bot, interaction, parsed.month, parsed.day));
 			}
 
-			//store the date of birth in numerical form  DD-MM
-			let formattedBirthday = `${interaction.options.getInteger('day')}-${
-				monthCode[interaction.options.getString('month')!]
-			}`;
+			//otherwise ask for the date in a form, filling in whichever half was given
+			const typed = [month ? months[monthNumber(month)! - 1] : '', day ?? '']
+				.join(' ')
+				.trim();
+			const field = new TextInputBuilder()
+				.setCustomId(dateField)
+				.setLabel('When is your birthday?')
+				.setPlaceholder('March 4, Mar 4 or 3/4')
+				.setStyle(TextInputStyle.Short)
+				.setMaxLength(30)
+				.setRequired(true);
+			if (typed) field.setValue(typed);
 
-			//set the new birthday into the enmap
-			bdayDates.set(interaction.user.id, formattedBirthday);
-			let monthCap =
-				interaction.options.getString('month')!.charAt(0).toUpperCase() +
-				interaction.options.getString('month')!.slice(1);
-			let embed = new EmbedBuilder()
-				.setDescription(
-					`Successfully set your birthday to: ${monthCap} ${interaction.options.getInteger(
-						'day'
-					)}`
-				)
-				.setColor(colorCheck(interaction.guild!.id));
-			interaction.reply({ embeds: [embed] });
-			return;
+			await interaction.showModal(
+				new ModalBuilder()
+					.setCustomId(birthdayModal)
+					.setTitle('Your birthday')
+					.addComponents(
+						new ActionRowBuilder<TextInputBuilder>().addComponents(field)
+					)
+			);
 		} catch (err) {
 			bot.logger.commandError(interaction.channel!.id, this.name, err);
+			if (interaction.replied || interaction.deferred) return;
 			interaction.reply({
 				content: 'Error: contact a developer to investigate',
 				flags: MessageFlags.Ephemeral,
@@ -170,4 +116,40 @@ export class Birthday implements SlashCommand {
 			return;
 		}
 	}
+}
+
+//the date someone typed into the form
+export async function handleBirthdayModal(
+	bot: Bot,
+	interaction: ModalSubmitInteraction
+): Promise<void> {
+	const typed = interaction.fields.getTextInputValue(dateField);
+	const parsed = parseBirthdayInput(typed);
+	if ('problem' in parsed) {
+		return void interaction.reply({
+			content: `${parsed.problem}`,
+			flags: MessageFlags.Ephemeral,
+		});
+	}
+	await save(bot, interaction, parsed.month, parsed.day);
+}
+
+async function save(
+	bot: Bot,
+	interaction: ChatInputCommandInteraction | ModalSubmitInteraction,
+	month: number,
+	day: number
+): Promise<void> {
+	//store the date of birth in numerical form  DD-MM
+	bdayDates.set(interaction.user.id, `${day}-${month}`);
+	const embed = new EmbedBuilder()
+		.setDescription(
+			`Successfully set your birthday to: ${longDate({
+				memberId: interaction.user.id,
+				month,
+				day,
+			})}`
+		)
+		.setColor(colorCheck(interaction.guild!.id));
+	await interaction.reply({ embeds: [embed] });
 }

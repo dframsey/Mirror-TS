@@ -9,6 +9,7 @@ import {
 } from 'discord.js';
 import { Bot } from '../Bot';
 import { managerCheck } from '../resources/managerCheck';
+import { birthdayModal, handleBirthdayModal } from '../slashcommands/Birthday';
 import { commandsUsed } from '../resources/metrics';
 import { handleNowPlayingButton, nowPlayingButton } from '../resources/nowPlaying';
 import { voiceCommandCheck } from '../resources/voiceCommandCheck';
@@ -23,6 +24,12 @@ export class InteractionCreate implements EventHandler {
 		if (interaction.isButton() && interaction.customId.startsWith(nowPlayingButton)) {
 			return void handleNowPlayingButton(bot, interaction).catch((error) =>
 				bot.logger.error('Now playing button failed:', error)
+			);
+		}
+		//the date someone typed into /birthday's form comes back on its own, after the command ended
+		if (interaction.isModalSubmit() && interaction.customId === birthdayModal) {
+			return void handleBirthdayModal(bot, interaction).catch((error) =>
+				bot.logger.error('Saving a birthday from the form failed:', error)
 			);
 		}
 		//entries on the right-click menu for a person, such as Birthday
