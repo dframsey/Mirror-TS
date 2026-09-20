@@ -1,7 +1,17 @@
+import { ApplicationCommandType } from 'discord.js';
 import { Bot } from '../Bot';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
+
+//a command Mirror still has, whether it is typed with a slash or picked from a right-click menu.
+//anything else Discord has on file is left over from an older version and gets cleaned up
+function stillExists(bot: Bot, name: string): boolean {
+	return (
+		bot.slashCommands.some((command) => command.name === name) ||
+		bot.userCommands.some((command) => command.name === name)
+	);
+}
 
 async function deleteCommandsFromGuild(
 	bot: Bot,
@@ -12,10 +22,7 @@ async function deleteCommandsFromGuild(
 	let guild = await bot.client.guilds.fetch(guildId);
 	let guildCommands = await guild.commands.fetch();
 	for (let [commandKey, registeredCommand] of guildCommands!) {
-		let command = bot.slashCommands.find(
-			(command) => command.name === registeredCommand.name
-		);
-		if (!hardDelete && command) continue;
+		if (!hardDelete && stillExists(bot, registeredCommand.name)) continue;
 		await registeredCommand.delete();
 		bot.logger.info(
 			`Deleted ${registeredCommand.name} from the guild ${guildId} command cache`
@@ -27,10 +34,7 @@ async function deleteCommandsFromApplication(bot: Bot, hardDelete?: boolean) {
 	if (typeof hardDelete == undefined) hardDelete = false;
 	let commands = await bot.client.application?.commands.fetch();
 	for (let [commandKey, registeredCommand] of commands!) {
-		let command = bot.slashCommands.find(
-			(command) => command.name === registeredCommand.name
-		);
-		if (!hardDelete && command) continue;
+		if (!hardDelete && stillExists(bot, registeredCommand.name)) continue;
 		await registeredCommand.delete();
 		bot.logger.info(
 			`Deleted ${registeredCommand.name} from the application command cache`
@@ -80,5 +84,21 @@ export async function registerSlashCommands(bot: Bot): Promise<boolean> {
 			); //create it globally if we aren't debugging
 		}
 	});
+
+	//right-click menu entries are registered the same way, but carry a type instead of a description
+	for (let command of bot.userCommands) {
+		let registerData = {
+			name: command.name,
+			type: ApplicationCommandType.User as const,
+		};
+		bot.logger.info(`Registering right-click command ${command.name}`);
+		if (bot.mode == 'debug') {
+			await bot.client.guilds.cache
+				.get(bot.test_server)
+				?.commands.create(registerData);
+		} else {
+			await bot.client.application?.commands.create(registerData);
+		}
+	}
 	return true;
 }
