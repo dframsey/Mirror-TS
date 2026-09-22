@@ -29,7 +29,36 @@ export class CustomPlayer extends Player {
 		leaveOnEnd: false,
 		leaveOnEmpty: false,
 		leaveOnStop: false,
+		//a join that cannot finish should fail quickly so it can be tried again, rather than sitting
+		//in a half joined state for the two minutes the player allows by default
+		connectionTimeout: 20 * 1000,
 	};
+
+	//joining voice is the most fragile thing Mirror does. It opens a second connection, to one of
+	//Discord's voice servers, and has to finish a handshake over it within the timeout above. A
+	//moment of bad network loses that handshake, so a failed join is tried again rather than
+	//giving up on the first attempt and leaving the channel
+	async joinVoice(
+		queue: GuildQueue,
+		channel: VoiceBasedChannel,
+		attempts = 3
+	): Promise<void> {
+		for (let attempt = 1; ; attempt++) {
+			try {
+				if (!queue.connection) await queue.connect(channel);
+				return;
+			} catch (error) {
+				if (attempt >= attempts) throw error;
+				const reason = error instanceof Error ? error.message : String(error);
+				this.bot.logger.warn(
+					`[${queue.guild.name}] Could not join ${channel.name} (try ${attempt} of ${attempts}): ${reason}. Trying again`
+				);
+				//a half finished connection would be kept and reused as it is, so it goes first
+				queue.dispatcher?.destroy();
+				await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+			}
+		}
+	}
 
 	//discord-player 7 ships without YouTube support, so the youtubei extractor provides it
 	async loadExtractors(): Promise<void> {

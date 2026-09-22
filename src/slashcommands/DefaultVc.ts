@@ -95,7 +95,7 @@ export async function launchVoice(bot: Bot): Promise<void> {
 		//an idle queue keeps Mirror sitting in the channel, ready for music or intros
 		const queue = bot.player.nodes.create(guildCheck, bot.player.playOptions);
 		try {
-			if (!queue.connection) await queue.connect(channel);
+			await bot.player.joinVoice(queue, channel);
 		} catch (err) {
 			bot.logger.warn(`Could not join the default voice channel in ${guildCheck.name}`);
 		}
