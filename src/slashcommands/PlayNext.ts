@@ -42,7 +42,7 @@ export class PlayNext implements SlashCommand {
 
 			await guild?.members.fetch(interaction.user.id);
 			try {
-				if (!queue.connection) await queue.connect(member?.voice.channel!);
+				await bot.player.joinVoice(queue, member?.voice.channel!);
 			} catch {
 				void bot.player.nodes.delete(guild!.id);
 				return void interaction.editReply('Could not join your voice channel');
