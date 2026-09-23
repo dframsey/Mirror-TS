@@ -6,7 +6,6 @@ import { registerSlashCommands } from '../resources/registerSlashCommands';
 import { launchVoice, watchDefaultVoice } from '../slashcommands/DefaultVc';
 import config from '../resources/config';
 import { ActivityType } from 'discord.js';
-import { hostname } from 'os';
 import { handledHere } from '../resources/instanceGuard';
 
 export class Ready implements EventHandler {
@@ -41,7 +40,9 @@ export class Ready implements EventHandler {
 			let now = new Date();
 			let channel = bot.client.channels.cache.get(config.error_channel);
 			if (!channel?.isSendable()) throw new Error(`the error channel ${config.error_channel} can't be found or written to`);
-			await channel.send(`Mirror started at ${now.getHours()}:${now.getMinutes()} on ${hostname()} in ${config.mode} mode, live in ${bot.client.guilds.cache.size} servers`);
+			//the machine's name stays in the log file, where it is just as good for spotting a second
+			//copy, rather than being posted to a Discord channel at every start
+			await channel.send(`Mirror started at ${now.getHours()}:${now.getMinutes()} in ${config.mode} mode, live in ${bot.client.guilds.cache.size} servers`);
 		});
 	}
 }
