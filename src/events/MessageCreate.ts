@@ -3,12 +3,14 @@ import { Bot } from '../Bot';
 import { Keyword } from '../keywords/Keyword';
 import { MessageCommand } from '../messagecommands/MessageCommand';
 import { EventHandler } from './EventHandler';
+import { handledHere } from '../resources/instanceGuard';
 
 export class MessageCreate implements EventHandler {
 	eventName = 'messageCreate';
 	async process(bot: Bot, message: Message): Promise<void> {
 		//ignore all bots
 		if (message.author.bot) return;
+		if (!handledHere(bot, message.guildId)) return;
 
 		var prefix = bot.prefix;
 

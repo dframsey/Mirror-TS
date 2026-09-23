@@ -12,6 +12,7 @@ import { SlashCommand } from './SlashCommand';
 import { Bot } from '../Bot';
 import { silencedUsers } from './SilenceMember';
 import { Option, Subcommand } from './Option';
+import { downloadTrack } from '../resources/downloadTrack';
 
 //how much of the chosen video is kept and played back
 const INTRO_SECONDS = 5;
@@ -66,7 +67,8 @@ export class Intro implements SlashCommand {
 
 			const folder = path.resolve(`data/intros/${interaction.guild!.id}`);
 			await fs.promises.mkdir(folder, { recursive: true });
-			await bot.player.downloadTrack(
+			await downloadTrack(
+				bot.player,
 				track,
 				path.join(folder, `${interaction.user.id}.mp4`),
 				INTRO_SECONDS

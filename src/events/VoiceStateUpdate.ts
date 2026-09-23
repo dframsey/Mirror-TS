@@ -4,6 +4,7 @@ import { existsSync } from 'fs';
 import path from 'path';
 import { VoiceState } from 'discord.js';
 import { silencedUsers } from '../slashcommands/SilenceMember';
+import { handledHere } from '../resources/instanceGuard';
 
 export class VoiceStateUpdate implements EventHandler {
 	eventName = 'voiceStateUpdate';
@@ -12,6 +13,7 @@ export class VoiceStateUpdate implements EventHandler {
 		oldState: VoiceState,
 		newState: VoiceState
 	): Promise<void> {
+		if (!handledHere(bot, newState.guild.id)) return;
 		if (newState.member!.user.bot){
 			if(newState.member?.user.id == newState.guild.members.me!.id){
 				if(!newState.channelId){

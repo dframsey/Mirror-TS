@@ -12,6 +12,7 @@ import { managerCheck } from '../resources/managerCheck';
 import { commandsUsed } from '../resources/metrics';
 import { handleNowPlayingButton, nowPlayingButton } from '../resources/nowPlaying';
 import { voiceCommandCheck } from '../resources/voiceCommandCheck';
+import { handledHere } from '../resources/instanceGuard';
 import { silenceCheck } from '../slashcommands/SilenceRole';
 import { EventHandler } from './EventHandler';
 
@@ -19,6 +20,7 @@ export class InteractionCreate implements EventHandler {
 	eventName = 'interactionCreate';
 
 	async process(bot: Bot, interaction: Interaction) {
+		if (!handledHere(bot, interaction.guildId)) return;
 		//the now playing card's buttons outlive any one command, so they're handled here
 		if (interaction.isButton() && interaction.customId.startsWith(nowPlayingButton)) {
 			return void handleNowPlayingButton(bot, interaction).catch((error) =>

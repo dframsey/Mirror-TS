@@ -1,24 +1,10 @@
 import { Bot } from '../Bot';
-import { GuildNodeCreateOptions, GuildQueue, Player, QueryType, Track } from 'discord-player';
+import { GuildNodeCreateOptions, GuildQueue, Player } from 'discord-player';
 import { User, VoiceBasedChannel } from 'discord.js';
-import config from '../../config.json';
-import { createWriteStream } from 'fs';
-import { Readable } from 'stream';
-import { pipeline } from 'stream/promises';
-import { spawn } from 'child_process';
-import ffmpegPath from 'ffmpeg-static';
-import { AttachmentExtractor, DefaultExtractors } from '@discord-player/extractor';
 import { VoiceConnectionStatus, entersState } from 'discord-voip';
-import { YoutubeExtractor } from 'discord-player-youtubei';
+import { fileSearchOptions, registerExtractors, userSearchOptions } from './extractors';
 import { playerErrors, tracksStarted } from './metrics';
 import { registerNowPlaying } from './nowPlaying';
-import { youtubeStream } from './youtubeStream';
-
-//these settings are optional and absent from most config.json files, so they are read defensively
-function configValue(key: string): string | undefined {
-	const value = (config as Record<string, unknown>)[key];
-	return typeof value === 'string' && value.length ? value : undefined;
-}
 
 export class CustomPlayer extends Player {
 	constructor(private bot: Bot) {
@@ -67,7 +53,7 @@ export class CustomPlayer extends Player {
 		}
 	}
 
-	//discord-player 7 ships without YouTube support, so the youtubei extractor provides it
+	//the extractors themselves are set up in extractors.ts
 	async loadExtractors(): Promise<void> {
 		//the player and extractors explain what they're doing through debug messages; listen before
 		//they start up. download failures are logged as warnings by youtubeStream itself
@@ -80,114 +66,28 @@ export class CustomPlayer extends Player {
 			this.bot.logger.debug(text);
 		});
 		this.on('error', (error) => this.bot.logger.error(error));
-
-		//audio comes from youtubeStream: yt-dlp first, since YouTube serves it most reliably, then the
-		//extractor's other methods, falling back only when one really fails. the optional cookies in
-		//config.json help when YouTube asks for a sign in
-		await this.extractors.register(YoutubeExtractor, {
-			createStream: youtubeStream(this.bot, configValue('youtube_cookie_file')),
-			cookie: configValue('youtube_cookie'),
-		});
-		await this.extractors.loadMulti(DefaultExtractors);
-		this.bot.logger.info('Loaded music extractors');
+		await registerExtractors(this, this.bot);
 	}
 
-	//looks up a song name or link typed by a user (/play, /playnext, /intro).
-	//links from YouTube, Spotify, SoundCloud and the like go through their own extractors, but any
-	//other link would be downloaded by the attachment extractor straight from wherever it points.
-	//that would let anyone who can use the bot see the host's IP address, or make it send requests to
-	//devices on the host's own network, so that extractor is left out of anything a user types
+	//looks up a song name or link typed by a user (/play, /playnext, /intro)
 	async searchFromUser(query: string, requestedBy: User) {
-		return this.search(query, {
-			requestedBy,
-			searchEngine: QueryType.AUTO,
-			blockExtractors: [AttachmentExtractor.identifier],
-		});
+		return this.search(query, userSearchOptions(requestedBy));
 	}
 
-	//plays a sound file from disk (intro themes, the sound effect commands).
-	//the youtube extractor answers file queries too and wins on priority, so it sits this one out
+	//plays a sound file from disk (intro themes, the sound effect commands)
 	async playFile(channel: VoiceBasedChannel, file: string) {
 		//play() joins by itself if the queue isn't connected, with no second try when the handshake
 		//fails, so the join happens here first where it is retried. play() then reuses it
 		const queue = this.nodes.create(channel.guild, this.playOptions);
 		await this.joinVoice(queue, channel);
 		const result = await this.play(channel, file, {
-			searchEngine: QueryType.FILE,
-			blockExtractors: [YoutubeExtractor.identifier],
+			...fileSearchOptions(),
 			nodeOptions: this.playOptions,
 		});
 		this.bot.logger.debug(
 			`Playing ${file} in ${channel.name}: resolved as ${result.track.title}`
 		);
 		return result;
-	}
-
-	//downloads a resolved track to disk. /intro uses this so the sound is on hand and plays
-	//the moment someone joins, rather than being fetched from YouTube at that point.
-	//pass seconds to keep only the beginning of the track
-	async downloadTrack(
-		track: Track,
-		destination: string,
-		seconds?: number
-	): Promise<void> {
-		const source = await this.trackStream(track);
-		if (!seconds) {
-			await pipeline(source, createWriteStream(destination));
-			return;
-		}
-
-		//ffmpeg reads the download on stdin and stops once it has the seconds we asked for.
-		//faststart puts the mp4 index at the front of the file: playback streams the file through
-		//a pipe, which cannot seek to the end for an index, and such a file plays as silence
-		const ffmpeg = spawn(
-			ffmpegPath as unknown as string,
-			[
-				'-y',
-				'-i',
-				'pipe:0',
-				'-t',
-				String(seconds),
-				'-vn',
-				'-c:a',
-				'aac',
-				'-b:a',
-				'128k',
-				'-movflags',
-				'+faststart',
-				destination,
-			],
-			{ stdio: ['pipe', 'ignore', 'pipe'] }
-		);
-		let details = '';
-		ffmpeg.stderr.on('data', (chunk) => (details += chunk.toString()));
-		//ffmpeg closing its input first is expected, so neither side should throw
-		source.on('error', () => ffmpeg.stdin.destroy());
-		ffmpeg.stdin.on('error', () => source.destroy());
-		source.pipe(ffmpeg.stdin);
-
-		await new Promise<void>((resolve, reject) => {
-			ffmpeg.on('error', reject);
-			ffmpeg.on('close', (code) => {
-				source.destroy();
-				if (code === 0) return resolve();
-				reject(new Error(`ffmpeg exited with ${code}: ${details.slice(-400)}`));
-			});
-		});
-	}
-
-	//the extractor hands back a stream, or a url to fetch one from
-	private async trackStream(track: Track): Promise<Readable> {
-		const extractor = this.extractors.get(YoutubeExtractor.identifier);
-		if (!extractor) throw new Error('the youtube extractor is not loaded');
-
-		const streamable = await extractor.stream(track);
-		if (typeof streamable === 'string') {
-			const response = await fetch(streamable);
-			return Readable.fromWeb(response.body as any);
-		}
-		if (streamable instanceof Readable) return streamable;
-		return (streamable as any).stream;
 	}
 
 	registerPlayerEvents() {
