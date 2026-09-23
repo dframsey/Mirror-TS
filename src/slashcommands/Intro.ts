@@ -13,6 +13,7 @@ import { Bot } from '../Bot';
 import { silencedUsers } from './SilenceMember';
 import { Option, Subcommand } from './Option';
 import { downloadTrack } from '../resources/downloadTrack';
+import { YoutubeExtractor } from 'discord-player-youtubei';
 
 //how much of the chosen video is kept and played back
 const INTRO_SECONDS = 5;
@@ -52,6 +53,14 @@ export class Intro implements SlashCommand {
 			if (!track) {
 				interaction.editReply({
 					content: 'Please enter a valid youtube link',
+				});
+				return;
+			}
+			//Spotify, SoundCloud and Apple Music links find their song on their own site, which
+			//intros can't be recorded from
+			if (track.extractor?.identifier !== YoutubeExtractor.identifier) {
+				interaction.editReply({
+					content: 'Intros have to come from YouTube. Paste a YouTube link, or type the video\'s name to search for it.',
 				});
 				return;
 			}
