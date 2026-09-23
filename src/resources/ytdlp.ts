@@ -145,8 +145,8 @@ export function keepYtdlpUpdated(bot: Bot): void {
 	if (!path) {
 		bot.logger.warn(
 			'yt-dlp is not installed, so YouTube songs only use the slower fallback download methods. ' +
-				'It comes with youtube-dl-exec: run npm ci again (on Windows without Python, run ' +
-				'set YOUTUBE_DL_SKIP_PYTHON_CHECK=1 first; the Windows yt-dlp does not need Python)'
+				'It comes with youtube-dl-exec: run npm ci again (on Windows without Python, first run ' +
+				'$env:YOUTUBE_DL_SKIP_PYTHON_CHECK = "1" in PowerShell; the Windows yt-dlp does not need Python)'
 		);
 		return;
 	}

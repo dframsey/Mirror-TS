@@ -1,6 +1,6 @@
 # Building and Running the bot
 
-All build operations should be completed by running ./build.bat (or ./build.sh if running on linux)
+All build operations should be completed by running .uild.bat (or ./build.sh if running on linux)
 
 This file will
 
@@ -10,14 +10,14 @@ This file will
 
 Typical workflow for running the bot on a fresh clone would be
 
-- set YOUTUBE_DL_SKIP_PYTHON_CHECK=1
+- $env:YOUTUBE_DL_SKIP_PYTHON_CHECK = "1" (in PowerShell; in Command Prompt, set YOUTUBE_DL_SKIP_PYTHON_CHECK=1)
 - npm ci
-- ./build.bat
+- .uild.bat
 - npm start
 
 `npm ci` installs exactly the versions recorded in `package-lock.json`, which is kept in git, so every machine runs the libraries a change was tested with. Use `npm i <package>` only to add or update a package on purpose, and commit the updated `package-lock.json` along with `package.json`. Don't leave out optional packages (no `--omit=optional`): the voice encryption (DAVE) and opus encoder libraries are optional, per-machine packages, and voice crashes without them.
 
-You must run ./build.bat and restart the bot whenever you make a change to the project's code. `config.json` is read when the bot starts, so a change to it only needs a restart.
+You must run .uild.bat and restart the bot whenever you make a change to the project's code. `config.json` is read when the bot starts, so a change to it only needs a restart.
 
 ## Updating the live bot
 
@@ -25,14 +25,14 @@ On the machine the live bot runs on, where pm2 runs it (first time: `pm2 start e
 
 - pm2 stop Mirror
 - git pull
-- set YOUTUBE_DL_SKIP_PYTHON_CHECK=1
+- $env:YOUTUBE_DL_SKIP_PYTHON_CHECK = "1" (in PowerShell; in Command Prompt, set YOUTUBE_DL_SKIP_PYTHON_CHECK=1)
 - npm ci
-- ./build.bat
+- .uild.bat
 - pm2 restart Mirror
 
 Stop the bot first: `npm ci` replaces all of `node_modules`, and Windows won't let it replace the native libraries a running bot has open.
 
-`set YOUTUBE_DL_SKIP_PYTHON_CHECK=1` matters on a machine without Python: without it `npm ci` quietly leaves out yt-dlp, the most reliable way Mirror downloads from YouTube (the Windows yt-dlp doesn't need Python). Setting it once as a user environment variable on the bot's machine works too.
+Setting `YOUTUBE_DL_SKIP_PYTHON_CHECK` matters on a machine without Python: without it `npm ci` quietly leaves out yt-dlp, the most reliable way Mirror downloads from YouTube (the Windows yt-dlp doesn't need Python). Setting it once as a user environment variable on the bot's machine works too.
 
 If `npm ci` or build.bat prints an error, fix it and run that step again before `pm2 restart Mirror`: a failed `npm ci` leaves `node_modules` half installed, and build.bat deletes `built/` before compiling.
 
@@ -45,7 +45,7 @@ Each log in `logs/` starts by saying what is running: `Mirror is starting on <ma
 The lock file holds every library at the version it was tested with, including the ones that talk to YouTube, and YouTube changes often enough to break old versions. (yt-dlp itself is the exception: `npm ci` downloads its newest release each time.) When YouTube playback starts failing, and every few weeks anyway, update them on a test copy, try a few songs, then commit the new `package-lock.json`:
 
 - npm update youtubei.js discord-player-youtubei googlevideo
-- ./build.bat
+- .uild.bat
 
 ## One copy per bot token
 
@@ -71,11 +71,11 @@ Set `metrics_port` in `config.json` (for example `9464`) and restart to have the
 
 Saved data (manager roles, birthdays, server colors, silenced users and so on) is stored with enmap, which moved from version 5 to 6. Version 6 can't open a version 5 database, so after pulling this update, stop the bot and run once:
 
-- set YOUTUBE_DL_SKIP_PYTHON_CHECK=1
+- $env:YOUTUBE_DL_SKIP_PYTHON_CHECK = "1" (in PowerShell; in Command Prompt, set YOUTUBE_DL_SKIP_PYTHON_CHECK=1)
 - npm ci
 - node scripts/migrate-enmap-v5.js
 - node scripts/faststart-intros.js
-- ./build.bat
+- .uild.bat
 - npm start
 
 The first script keeps the old database as `data/enmap.v5.sqlite`.
