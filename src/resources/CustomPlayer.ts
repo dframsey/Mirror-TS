@@ -8,6 +8,7 @@ import { pipeline } from 'stream/promises';
 import { spawn } from 'child_process';
 import ffmpegPath from 'ffmpeg-static';
 import { AttachmentExtractor, DefaultExtractors } from '@discord-player/extractor';
+import { VoiceConnectionStatus, entersState } from 'discord-voip';
 import { YoutubeExtractor } from 'discord-player-youtubei';
 import { playerErrors, tracksStarted } from './metrics';
 import { registerNowPlaying } from './nowPlaying';
@@ -35,17 +36,23 @@ export class CustomPlayer extends Player {
 	};
 
 	//joining voice is the most fragile thing Mirror does. It opens a second connection, to one of
-	//Discord's voice servers, and has to finish a handshake over it within the timeout above. A
-	//moment of bad network loses that handshake, so a failed join is tried again rather than
-	//giving up on the first attempt and leaving the channel
+	//Discord's voice servers, and has to finish a handshake over it. A moment of bad network loses
+	//that handshake, so the join is tried again rather than giving up on the first attempt.
+	//
+	//connect() comes back as soon as Discord has been asked to move the bot, long before the voice
+	//server has answered, so waiting for the connection to be ready is what actually catches a
+	//failed handshake. Without that wait the failure lands much later, while a song is starting,
+	//where the player reports it as a broken queue and Mirror leaves the channel
 	async joinVoice(
 		queue: GuildQueue,
 		channel: VoiceBasedChannel,
-		attempts = 3
+		attempts = 3,
+		readyTimeout = 15 * 1000
 	): Promise<void> {
 		for (let attempt = 1; ; attempt++) {
 			try {
 				if (!queue.connection) await queue.connect(channel);
+				await entersState(queue.connection!, VoiceConnectionStatus.Ready, readyTimeout);
 				return;
 			} catch (error) {
 				if (attempt >= attempts) throw error;
@@ -101,6 +108,10 @@ export class CustomPlayer extends Player {
 	//plays a sound file from disk (intro themes, the sound effect commands).
 	//the youtube extractor answers file queries too and wins on priority, so it sits this one out
 	async playFile(channel: VoiceBasedChannel, file: string) {
+		//play() joins by itself if the queue isn't connected, with no second try when the handshake
+		//fails, so the join happens here first where it is retried. play() then reuses it
+		const queue = this.nodes.create(channel.guild, this.playOptions);
+		await this.joinVoice(queue, channel);
 		const result = await this.play(channel, file, {
 			searchEngine: QueryType.FILE,
 			blockExtractors: [YoutubeExtractor.identifier],
