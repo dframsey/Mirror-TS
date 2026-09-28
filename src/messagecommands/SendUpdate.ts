@@ -11,6 +11,30 @@ import { updateChannels } from '../slashcommands/Update';
 //the most Discord allows in an embed's description
 const maxLength = 4096;
 
+//the homies emoji from the original Mirror server. a bot can only show a server's emoji while it's
+//in that server, so Mirror keeps its own copy as an application emoji, which works everywhere with no
+//permissions needed. the first update after a new bot (or test bot) starts using this uploads it
+const homiesImage = 'https://cdn.discordapp.com/emojis/863998146589360158.png';
+let homies: Promise<string> | undefined;
+function homiesEmoji(bot: Bot): Promise<string> {
+	homies ??= (async () => {
+		const application = bot.client.application;
+		if (!application) return '';
+		const emojis = await application.emojis.fetch();
+		const existing = emojis.find((emoji) => emoji.name === 'homies');
+		if (existing) return existing.toString();
+		const created = await application.emojis.create({ attachment: homiesImage, name: 'homies' });
+		bot.logger.info('Uploaded the homies emoji to the bot, for update titles');
+		return created.toString();
+	})().catch((error) => {
+		//the update still goes out, just without the emoji. the next update tries again
+		bot.logger.warn('Could not get the homies emoji for the update title:', error);
+		homies = undefined;
+		return '';
+	});
+	return homies;
+}
+
 //the update to send: what follows the command word in the same message (after a space or a new line,
 //with its formatting kept), or else a .txt file attached to it, or else the message it replies to.
 //a long paste arrives as an attached message.txt, and replying lets the update be read over first
@@ -83,11 +107,10 @@ export class SendUpdate implements MessageCommand {
 					`That update is ${content.length} characters long, and Discord allows ${maxLength} in one. Shorten it and send it again.`
 				));
 			}
+			const emoji = await homiesEmoji(bot);
 			let embed = new EmbedBuilder()
 				.setColor('#FFFFFF')
-				.setTitle(
-					':mirror: **__Mirror Update!__** <:homies:863998146589360158>'
-				)
+				.setTitle(`🪞 **__Mirror Update!__** ${emoji}`.trim())
 				.setDescription(content)
 				.setFooter({
 					text: 'Ford, Fordle#0001',
